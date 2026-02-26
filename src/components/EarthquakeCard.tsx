@@ -1,11 +1,26 @@
 import { EarthquakeData, getMagnitudeColor } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
-import { Activity, MapPin, Waves } from "lucide-react";
+import { Activity, MapPin, Waves, Navigation } from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface Props {
     data: EarthquakeData;
     onClick?: (data: EarthquakeData) => void;
+}
+
+// Haversine formula to calculate distance
+function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+    const R = 6371; // Radius of the earth in km
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const d = R * c; // Distance in km
+    return d;
 }
 
 export function EarthquakeCard({ data, onClick }: Props) {
@@ -14,6 +29,27 @@ export function EarthquakeCard({ data, onClick }: Props) {
         addSuffix: true,
         locale: tr
     });
+
+    const [distance, setDistance] = useState<number | null>(null);
+
+    useEffect(() => {
+        // Calculate distance if coordinates exist and location access granted
+        if (data.geojson?.coordinates?.length === 2 && navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition((position) => {
+                const userLat = position.coords.latitude;
+                const userLon = position.coords.longitude;
+                // API coords are [longitude, latitude]
+                const eqLon = data.geojson.coordinates[0];
+                const eqLat = data.geojson.coordinates[1];
+
+                const dist = getDistanceFromLatLonInKm(userLat, userLon, eqLat, eqLon);
+                setDistance(dist);
+            }, () => {
+                // Silently fail if user denies access or it's unavailable
+                setDistance(null);
+            });
+        }
+    }, [data.geojson?.coordinates]);
 
     // Clean up title
     const locationTitle = data.title.split(' (')[0] || data.title;
@@ -43,15 +79,21 @@ export function EarthquakeCard({ data, onClick }: Props) {
                 </div>
             </div>
 
-            <div className="flex items-center gap-4 text-xs text-slate-400 border-t border-white/5 pt-3 mt-1">
-                <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-4 text-xs text-slate-400 border-t border-white/5 pt-3 mt-1 flex-wrap">
+                <div className="flex items-center gap-1.5 shrink-0" title="Zaman">
                     <Activity className="w-3.5 h-3.5" />
                     <span>{timeAgo}</span>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 shrink-0" title="Derinlik">
                     <Waves className="w-3.5 h-3.5" />
                     <span>{data.depth} km</span>
                 </div>
+                {distance !== null && (
+                    <div className="flex items-center gap-1.5 shrink-0 text-blue-400 font-medium" title="Size Uzaklığı">
+                        <Navigation className="w-3.5 h-3.5" />
+                        <span>{distance.toFixed(0)} km</span>
+                    </div>
+                )}
             </div>
         </div>
     );
